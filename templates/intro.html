@@ -1,0 +1,583 @@
+<!DOCTYPE html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+    
+        body { 
+            font: 12px Arial;
+            background-color: #FCFCFC;
+        }
+
+        path { 
+            stroke: steelblue;
+            stroke-width: 2;
+            fill: none;
+        }
+
+        .axis path,
+        .axis line {
+            fill: none;
+            stroke: grey;
+            stroke-width: 1.5px;
+            shape-rendering: crispEdges;
+        }
+
+        .event line {
+            stroke: red;
+            stroke-dasharray: 5;
+            stroke-width: 2;
+            shape-rendering: crispEdges;
+        }
+        
+        .event-ext line {
+            stroke: black;
+            stroke-dasharray: 2;
+            stroke-width: 1.5;
+            shape-rendering: crispEdges;
+        }
+        
+        .event text {
+            fill: red;
+        }
+
+        .title {
+            font-weight: bold;
+            font-style: italic;
+        }
+    
+    </style>
+  
+    <script src="http://d3js.org/d3.v3.min.js"></script>
+</head>
+
+<body>
+
+
+<script>
+
+    var w = 900;
+    var h = 500;
+    var margin = {top: 30, right: 110, bottom: 30, left: 50},
+        width = w - margin.left - margin.right,
+        height = h - margin.top - margin.bottom;
+
+
+    var parseDate = d3.time.format("%d-%b-%y").parse;
+
+
+    var xScale = d3.time.scale().range([0, width-20]);
+    var yScale = d3.scale.linear().range([height, 0]);
+
+    var formatPercent = d3.format(".0%")
+
+    var xAxis = d3.svg.axis().scale(xScale)
+        .orient("bottom");
+
+    var yAxis = d3.svg.axis().scale(yScale)
+        .orient("left")
+        .tickFormat(formatPercent);
+
+
+    var valueline = d3.svg.line()
+        .interpolate("basis")
+        .x(function(d) { return xScale(d.date); 
+        })
+        .y(function(d) { return yScale(d.all); 
+        });
+
+    var climateline = d3.svg.line()
+        .interpolate("basis")
+        .x(function(d) { return xScale(d.date); 
+        })
+        .y(function(d) { return yScale(d.climate); 
+        });
+
+    var warmingline = d3.svg.line()
+        .interpolate("basis")
+        .x(function(d) { return xScale(d.date); 
+        })
+        .y(function(d) { return yScale(d.warming); 
+        });
+    
+    var svg = d3.select("body")
+        .append("svg")
+            .attr("width", width + margin.left + margin.right)
+            .attr("height", height + margin.top + margin.bottom)
+        .append("g")
+            .attr("transform", 
+                  "translate(" + margin.left + "," + margin.top + ")");
+
+    var timing = 4000;
+    var timingEvent1 = 8000;
+    var timingEvent2 = 10000;
+    var timingEvent3 = 12000;
+    var timingPhrases = 25000;
+    var timingRetract = 41000;
+    var timingByEvent = 42500;
+
+ 
+    d3.csv("../static/freq_byevent.csv", function(d) {
+          d.date = parseDate(d.Date);
+          d.all = +d.All_freq;
+          d.event = d.Event_type;
+          d.climate = +d.Climate_freq;
+          d.warming = +d.Warming_freq;
+          return d;
+        }, function(error, data) {
+          if (error) throw error;
+
+        var allEvents = data.filter(function(d) { return d.event == "All" })
+    
+
+        xScale.domain(d3.extent(allEvents, function(d) { return d.date; }));
+        yScale.domain([0, d3.max(allEvents, function(d) { return d.all; })]);
+
+        /* Creating axes */        
+        svg.append("g")
+            .attr("class", "x axis")
+            .attr("transform", "translate(0," + height + ")")
+            .call(xAxis);
+        
+        svg.append("g")
+            .attr("class", "y axis")
+            .call(yAxis)
+            .append("text")
+                .attr("fill", "#000")
+                .attr("transform", "rotate(-90)")
+                .attr("y", 6)
+                .attr("dy", "0.71em")
+                .style("text-anchor", "end")
+                .text("Percentage of Articles");  
+
+    svg.append("text")
+        .attr("class", "title")
+        .attr("x", (width / 2))             
+        .attr("y", 0 - (margin.top / 2) + 35)
+        .attr("text-anchor", "middle")  
+        .style("font-size", "24px")  
+        .text("How frequently is climate change discussed in the context of weather events?")        
+        .call(wrap, 600, 325, 190);
+    
+    setTimeout(function () {
+    var line1 = createAllLine("drought_line", "drought_label", "http://0.0.0.0:5000/drought");
+    var line2 = createAllLine("hurricane_line", "hurricane_label");
+    var line3 = createAllLine("flooding_line", "flooding_label");
+    var line4 = createAllLine("tornado_line", "tornado_label");
+    var line5 = createAllLine("climate_line", "climate_label");
+    var line6 = createAllLine("warming_line", "warming_label");
+    }, 1000)
+   
+
+    function createAllLine(line_id, label_id, url) {
+            var path = svg.append("path")
+                .style("stroke", "black")
+                .attr("class", "line")
+                .attr("id", line_id)
+                .attr("d", valueline(allEvents));
+            
+            var line_label = svg.append("text")
+                .style("pointer-events", "all")
+                .on({"mouseover": function(d) {
+                        d3.select(this).style("cursor", "pointer")
+                      },
+                     "mouseout": function(d) {
+                        d3.select(this).style("cursor", "default")
+                      },
+                     "click": function() { window.open(url); }})
+                .attr("class", "label")
+                .attr("id", label_id)
+                .attr("transform", "translate("+ (width-17) +","+yScale(allEvents[allEvents.length-1].all)+")") 
+                .attr("text-anchor", "start")
+                .attr("dy", ".35em")
+                .style("fill", "#FCFCFC")                
+                .attr("font-size", "16px")
+                .text("All Mentions")
+    
+            var totalLength = path.node().getTotalLength();
+    
+            path.attr("stroke-dasharray", totalLength + " " + totalLength)
+                .attr("stroke-dashoffset", totalLength)
+                .transition()
+                .duration(timing)
+                .ease("linear")
+                .attr("stroke-dashoffset", 0);  
+    
+            line_label.transition()
+                .delay(timing)
+                .style("fill", "black");
+        console.log("line drawn");
+    }
+
+    setTimeout(function() {
+        var date_kyoto = data[7]
+        var kyoto_line = svg.append("g")
+                            .attr("class", "event")
+                            .append("line")
+                                .attr("x1", xScale(date_kyoto.date))
+                                .attr("x2", xScale(date_kyoto.date))
+                                .attr("y1", height)
+                                .attr("y2", yScale(0.0228));
+
+        var kyoto_linedash = svg.append("g")
+                                .attr("class", "event-ext")
+                                .append("line")
+                                .attr("x1", xScale(date_kyoto.date))
+                                .attr("x2", xScale(date_kyoto.date))
+                                .attr("y1", yScale(0.0228))
+                                .attr("y2", yScale(0.0303));
+        
+
+        var kyoto_label = svg.append("g")
+                            .attr("class", "event")
+                            .append("text")
+                            .attr("transform", "translate("+ (xScale(date_kyoto.date)-1.5) + ","+ yScale(0.0313) +")") 
+                            .text("Kyoto Protocol");
+
+    }, timingEvent1);
+
+    setTimeout(function() {
+        var date_07 = data[17];
+
+        var nobel_line = svg.append("g")
+                            .attr("class", "event")
+                            .append("line")
+                                .attr("x1", xScale(date_07.date))
+                                .attr("x2", xScale(date_07.date))
+                                .attr("y1", height)
+                                .attr("y2", yScale(0.06));
+
+        var nobel_linedash = svg.append("g")
+                                .attr("class", "event-ext")
+                                .append("line")
+                                    .attr("x1", xScale(date_07.date))
+                                    .attr("x2", xScale(date_07.date))
+                                    .attr("y1", yScale(0.06))
+                                    .attr("y2", yScale(0.067));
+
+        var nobel_label = svg.append("g")
+                            .attr("class", "event")
+                            .append("text")
+                            .attr("transform", "translate("+ (xScale(date_07.date)-3) + ","+ yScale(0.072) +")") 
+                            .text("Nobel Peace Prize Awarded")
+                            .call(wrap, 90, 0, 0);
+    }, timingEvent2);
+
+    setTimeout(function() {
+        var copenhagen = data[19];
+
+        var copenhagen_line = svg.append("g")
+                            .attr("class", "event")
+                            .append("line")
+                                .attr("x1", xScale(copenhagen.date))
+                                .attr("x2", xScale(copenhagen.date))
+                                .attr("y1", height)
+                                .attr("y2", yScale(0.058));
+
+        var copenhagen_linedash = svg.append("g")
+                                .attr("class", "event-ext")
+                                .append("line")
+                                    .attr("x1", xScale(copenhagen.date))
+                                    .attr("x2", xScale(copenhagen.date))
+                                    .attr("y1", yScale(0.058))
+                                    .attr("y2", yScale(0.0625));
+
+        var copenhagen_label = svg.append("g")
+                            .attr("class", "event")
+                            .append("text")
+                            .attr("transform", "translate("+ (xScale(copenhagen.date)-1.5) + ","+ yScale(0.066) +")") 
+                            .text("Copenhagen Climate Change Conference")
+                            .call(wrap, 135, 0, 0);
+    }, timingEvent3);
+
+        
+
+    
+    setTimeout(function() {
+                updatePhraseData();
+        }, timingPhrases);
+
+    function updatePhraseData() {
+            d3.select("#hurricane_line")
+                .transition()
+                .style("stroke", "#FCFCFC");
+            d3.select("#hurricane_label")
+                .transition()
+                .style("fill", "none")
+
+            d3.select("#flooding_line")
+                .transition()
+                .style("stroke", "#FCFCFC");
+            d3.select("#flooding_label")
+                .transition()
+                .style("fill", "none")
+
+            d3.select("#tornado_line")
+                .transition()
+                .style("stroke", "#FCFCFC");
+            d3.select("#tornado_label")
+                .transition()
+                .style("blur", "0")
+                .style("fill", "none");
+
+            d3.select("#drought_line")
+                .transition()
+                .style("stroke", "#FCFCFC");
+            d3.select("#drought_label")
+                .transition()
+                .style("fill", "none")
+
+            d3.selectAll(".event").remove();
+            d3.selectAll(".event-ext").remove();
+
+            svg.selectAll(".title")
+                .transition()
+                .attr("x", (width / 2) - 155)             
+                .attr("y", 0 - (margin.top / 2) + 35) 
+                .text("How has the language evolved?");
+    
+            xScale.domain(d3.extent(allEvents, function(d) { return d.date; }));
+            yScale.domain([0, d3.max(allEvents, function(d) { return d.all; })]);
+    
+    
+            d3.select("#climate_line")
+                .attr("stroke-dasharray", null)
+                .attr("stroke-dashoffset", null)
+                .transition()
+                .duration(750)
+                .attr("d", climateline(allEvents))
+                .style("stroke", "blue"); 
+    
+             d3.select("#climate_label")
+                .transition()
+                .duration(750)
+                .attr("transform", "translate("+ (width-17) +","+yScale(allEvents[allEvents.length-1].climate)+")") 
+                .attr("text-anchor", "start")
+                .attr("dy", ".35em")
+                .style("fill", "blue")             
+                .attr("font-size", "16px")
+                .text("'Climate Change'"); 
+    
+            d3.select("#warming_line")
+                .attr("stroke-dasharray", null)
+                .attr("stroke-dashoffset", null)
+                .transition()
+                .duration(750)
+                .attr("d", warmingline(allEvents))
+                .style("stroke", "red");
+    
+            d3.select("#warming_label")
+                .transition()
+                .duration(750)
+                .attr("transform", "translate("+ (width-17) +","+yScale(allEvents[allEvents.length-1].warming)+")") 
+                .attr("text-anchor", "start")
+                .attr("dy", ".35em")
+                .style("fill", "red")                
+                .attr("font-size", "16px")
+                .text("'Global Warming'"); 
+    
+            
+            d3.select("body").select(".x.axis")
+                .transition()
+                .duration(750)
+                .call(xAxis);
+    
+            d3.select("body").select(".y.axis")
+                .transition()
+                .duration(750)
+                .call(yAxis);
+
+    }
+
+    setTimeout(function() {
+            d3.select("#climate_line")
+                .attr("stroke-dasharray", null)
+                .attr("stroke-dashoffset", null)
+                .transition()
+                .duration(750)
+                .attr("d", valueline(allEvents))
+                .style("stroke", "black"); 
+    
+            d3.select("#climate_label")
+                .style("fill", "#FCFCFC")
+                .attr("transform", "translate("+ (width-17) +","+yScale(allEvents[allEvents.length-1].all)+")") 
+                .attr("text-anchor", "start")
+                .attr("dy", ".35em")
+                .transition()
+                .delay(750)
+                .style("fill", "black")                
+                .attr("font-size", "16px")
+                .text("All Mentions"); 
+    
+            d3.select("#warming_line")
+                .attr("stroke-dasharray", null)
+                .attr("stroke-dashoffset", null)
+                .transition()
+                .duration(750)
+                .attr("d", valueline(allEvents))
+                .style("stroke", "black");
+    
+            d3.select("#warming_label")
+                .style("fill", "#FCFCFC")     
+                .attr("transform", "translate("+ (width-17) +","+yScale(allEvents[allEvents.length-1].all)+")") 
+                .attr("text-anchor", "start")
+                .attr("dy", ".35em")
+                .transition()
+                .delay(750)
+                .style("fill", "black")
+                .text("All Mentions"); 
+    }, timingRetract);
+
+
+    setTimeout(function() {
+        updateEventData();
+    }, timingByEvent);
+
+
+    function updateEventData() {
+
+            svg.selectAll(".title")
+                .transition() 
+                .attr("x", (width / 2) - 50)  
+                .text("How does the frequency vary by weather event?");  
+
+            svg.append("text")
+                .attr("class", "subtitle")
+                .transition() 
+                .attr("x", (width / 2) - 326.5)  
+                .attr("y", 0 - (margin.top / 2) + 60)
+                .attr("font-size", "20px")
+                .text("(Click on the event label to learn more!)");
+
+            d3.select("#warming_line").remove()
+            d3.select("#warming_label").remove()
+            d3.select("#climate_line").remove()
+            d3.select("#climate_label").remove()
+    
+            var drought = data.filter(function(d) { return d.event == "Drought" })
+            var hurricane = data.filter(function(d) { return d.event == "Hurricane"})
+            var flooding = data.filter(function(d) { return d.event=="Flooding"})
+            var tornado = data.filter(function(d) { return d.event=="Tornado"})
+    
+            xScale.domain(d3.extent(drought, function(d) { return d.date; }));
+            yScale.domain([0, d3.max(drought, function(d) { return d.all; })]);
+    
+    
+            d3.select("#hurricane_line")
+                .attr("stroke-dasharray", null)
+                .attr("stroke-dashoffset", null)
+                .transition()
+                .duration(750)
+                .attr("d", valueline(hurricane))
+                .style("stroke", "darkblue"); 
+    
+             d3.select("#hurricane_label")
+                .transition()
+                .duration(750)
+                .attr("transform", "translate("+ (width-17) +","+yScale(hurricane[hurricane.length-1].all)+")") 
+                .attr("text-anchor", "start")
+                .attr("font-size", "16px")
+                .attr("dy", ".35em")
+                .style("fill", "darkblue")
+                .text("Hurricanes"); 
+    
+            d3.select("#drought_line")
+                .attr("stroke-dasharray", null)
+                .attr("stroke-dashoffset", null)
+                .transition()
+                .duration(750)
+                .attr("d", valueline(drought))
+                .style("stroke", "#DD6C0E");
+    
+            d3.select("#drought_label")
+                .transition()
+                .duration(750)
+                .attr("transform", "translate("+ (width-17) +","+yScale(drought[drought.length-1].all)+")") 
+                .attr("text-anchor", "start")
+                .attr("dy", ".35em")
+                .style("fill", "#DD6C0E")                
+                .attr("font-size", "16px")
+                .text("Droughts");
+    
+            d3.select("#tornado_line")
+                .attr("stroke-dasharray", null)
+                .attr("stroke-dashoffset", null)
+                .transition()
+                .duration(750)
+                .attr("d", valueline(tornado))
+                .style("stroke", "darkgrey");
+    
+            d3.select("#tornado_label")
+                .transition()
+                .duration(750)
+                .attr("transform", "translate("+ (width-17) +","+yScale(tornado[tornado.length-1].all)+")") 
+                .attr("text-anchor", "start")
+                .attr("dy", ".35em")
+                .style("fill", "#5D5D5D")                
+                .attr("font-size", "16px")
+                .text("Tornadoes");
+    
+            d3.select("#flooding_line")
+                .attr("stroke-dasharray", null)
+                .attr("stroke-dashoffset", null)
+                .transition()
+                .duration(750)
+                .attr("d", valueline(flooding))
+                .style("stroke", "lightblue"); 
+            
+            d3.select("#flooding_label")
+                .transition()
+                .duration(750)
+                .attr("transform", "translate("+ (width-17) +","+yScale(flooding[flooding.length-1].all)+")") 
+                .attr("text-anchor", "start")
+                .attr("dy", ".35em")
+                .style("fill", "lightblue")                
+                .attr("font-size", "16px")
+                .text("Flooding");
+            
+            d3.select("body").select(".x.axis")
+                .transition()
+                .duration(750)
+                .call(xAxis);
+    
+            d3.select("body").select(".y.axis")
+                .transition()
+                .duration(750)
+                .call(yAxis);
+
+    }
+    
+
+});
+    
+function wrap(text, width, left, center) {
+  text.each(function() {
+    var text = d3.select(this),
+        words = text.text().split(/\s+/).reverse(),
+        word,
+        line = [],
+        lineNumber = 0,
+        lineHeight = 1.1, // ems
+        y = text.attr("y"),
+        dy = 0,
+        tspan = text.text(null).append("tspan").attr("x", left).attr("y", y).attr("dy", dy + "em");
+
+    while (word = words.pop()) {
+      line.push(word);
+      tspan.text(line.join(" "));
+      if (tspan.node().getComputedTextLength() > width) {
+        line.pop();
+        tspan.text(line.join(" "));
+        line = [word];
+        tspan = text.append("tspan").attr("x", center).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+      }
+    }
+  });
+}
+
+
+
+</script>
+
+
+</body>

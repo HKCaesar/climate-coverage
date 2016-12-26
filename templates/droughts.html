@@ -1,0 +1,715 @@
+<!DOCTYPE html>
+
+<head>
+    <meta charset="utf-8">
+    <style>
+
+        body {
+            font: 12px Arial;
+            background-color: #AFD8DD;
+        }
+
+        svg {
+            display:inline-block;
+        }
+
+        p {
+            font-size: 14px;
+            font-weight: bold;
+        }
+
+        .axis path,
+        .axis line {
+          fill: none;
+          stroke: #000;
+          shape-rendering: crispEdges;
+        }
+
+        .focus line {
+            fill: none;
+            stroke: #000;
+            shape-rendering: crispEdges; 
+        }
+
+        .overlay {
+            fill: none;
+            pointer-events: all;
+        }
+
+        
+        .states {
+            fill: none;
+            stroke-linejoin: round;
+        }
+
+        .land {
+            fill: #ddd;
+        }
+
+        .border {
+            fill: none;
+            stroke: #fff;
+            stroke-linejoin: round;
+            stroke-linecap: round;
+        }
+
+
+        .select-list {
+            position: relative;
+            display: block;
+
+        }
+
+        .explanation { 
+            stroke-width: 0.5px;
+            stroke: #5D5D5D;
+            fill: #5D5D5D;
+        }
+    
+        .tooltip-title {
+            font-size: 36px;
+            fill: #DD6C0E;
+            font-weight: bold;
+        }
+
+        .tooltip-fields {
+            font-size: 18px;
+        }
+
+        .tooltip-titles {
+            font-size: 18px;
+        }
+
+
+        .top-headlines {
+            font-size: 16px;
+            font-style: italic;
+        }
+
+
+    </style>
+
+<script src="//d3js.org/d3.v4.min.js"></script>
+<script src="//d3js.org/topojson.v1.min.js"></script>
+<script src="https://d3js.org/d3-queue.v3.min.js"></script>
+<script src="https://d3js.org/d3-scale-chromatic.v1.min.js"></script>
+
+</head>
+<div class="allPage">
+    <div>
+        <svg width=1300 height=475 id="map"></svg>
+    </div>
+    
+    <div>
+        <svg width=1180 height=200 id="chart"></svg>
+    </div>
+    
+    <div>
+        <p> Select a source from the dropdown below, and move the cursor over the chart to see the number of droughts <br> by state and the top topic for the selected year. </p> 
+        <select id="select-list"> </select> 
+    </div>
+    
+</div>
+
+<body>
+
+    <script>
+
+// map variables
+    var svg = d3.select("#map"),
+    widthMap = 850,
+    heightMap = 450;
+
+    var projection = d3.geoAlbersUsa()
+        .scale(1000)
+        .translate([widthMap / 2, heightMap / 2]);
+
+    var path = d3.geoPath()
+        .projection(projection);
+
+    var color = d3.scaleQuantize()
+        .domain([0,200])
+        .range(["#DDDDDD", "#DDD0C6", "#DDC3AF", "#DDB798", "#DDAA81", "#DD9E6A", "#DD9153", "#DD853C", "#DD7825", "#DD6C0E"]);
+
+     
+    var noaa = d3.map()
+
+    var tooltip = svg.append("g")
+        .attr("class", "tooltip")
+        .attr("transform", "translate(" + (widthMap+55) + "," + (0) + ")");
+    
+
+// chart variables
+    var w = 875;
+    var h = 200;
+    var marginGraph = {top: 10, right: 90, bottom: 20, left: 45},
+        widthGraph = w - marginGraph.left - marginGraph.right,
+        heightGraph = h - marginGraph.top - marginGraph.bottom;
+
+    var parseDate = d3.timeParse("%d-%b-%y"),
+        bisectDate = d3.bisector(function(d) { return parseDate(d.Date); }).left;
+
+    var xScale = d3.scaleTime().range([0, widthGraph]);
+    var yScale = d3.scaleLinear().range([heightGraph, 0]);
+
+
+    var xAxis = d3.axisBottom().scale(xScale);
+    
+    var yAxis = d3.axisLeft().scale(yScale);
+
+    var stack = d3.stack();
+
+    var area = d3.area()
+        .curve(d3.curveBasis)
+        .x(function(d, i) { return xScale(parseDate(d.data.Date)); })
+        .y0(function(d) { return yScale(d[0]); })
+        .y1(function(d) { return yScale(d[1]); });
+    
+    var stackedArea0 = d3.area()
+      .curve(d3.curveBasis)
+      .x(function(d) { return xScale(parseDate(d.data.Date)); })
+      .y0(function(d) { return heightGraph; })
+      .y1(function(d) { return heightGraph; });
+                    
+
+    var chartArea = d3.select("#chart")
+
+    var graphArea = chartArea.append("g")
+                    .attr("class", "chart-graph")
+                    .attr("transform", "translate(" + marginGraph.left + "," + marginGraph.top + ")");
+
+    var explain = d3.select("#chart")
+        .append("g")
+        .attr("class", "explanation")
+        .attr("transform", "translate(915,30)");
+
+    var current_source = "All Newspapers"; 
+
+    var source_outline = d3.map();
+
+
+// load data
+
+    d3.queue()
+        .defer(d3.json, "{{url_for('static',filename="us.json")}}")
+        .defer(d3.csv, "{{url_for('static',filename="drought_final2.csv")}}")
+        .defer(d3.csv, "{{url_for('static',filename="noaa_final.csv")}}", function(d) { 
+                if (d.RELATED_EVENT == "Drought" && parseDate(d.DATE).getFullYear() == 1996 ){
+                    noaa.set(+d.id, +d.NUM_EVENTS);
+                    }; 
+                })
+        .defer(d3.csv, "{{url_for('static',filename="drought_final2.csv")}}", function(d) { 
+                    source_outline.set(+d.id, d.Source);
+                })
+        .await(ready);
+
+      
+
+function ready(error, us, drought_final2) {
+        // create map //
+
+        svg.style("background-color", "#AFD8DD");    
+
+        svg.append("path")
+            .datum(topojson.feature(us, us.objects.land))
+            .attr("class", "land")
+            .transition()
+            .duration(500)
+            .attr("d", path);
+
+        svg.append("g")
+            .attr("class", "states")
+            .selectAll("path")
+            .data(topojson.feature(us, us.objects.states).features)
+            .enter().append("path")    
+                .attr("stroke", "#fff")
+                .attr("fill",  function(d) { return color(noaa.get(d.id*1000)); })
+                .attr("d", path);
+
+     // stackedArea chart creation // 
+
+        var allEvents = drought_final2.filter(function(d) { return d.Source == "All Newspapers" })
+        
+        var keys = d3.keys(allEvents[0]);
+
+        var keys = keys.filter(function(key) { 
+			if (key !== "" && key !== "Date" && key !== "Source") {
+				return key; 
+			}
+            });
+
+        stack.keys(keys);
+        
+        xScale.domain(d3.extent(allEvents, function(d) { return parseDate(d.Date); }));
+        yScale.domain([0, d3.max(stack(allEvents)[4], function(d) { return d[1]; })])
+
+    
+        graphArea.selectAll(".layer")
+                    .attr("class", "layer")
+                    .data(stack(allEvents))
+                    .enter().append("path")
+                        .attr("class", "area")
+                        .attr("opacity", 0.9)
+                        .attr("d", stackedArea0)
+                        .style("fill", function(d) { if (d.key == "Agriculture") {
+                            return "5C7A0D";
+                            } else if (d.key == "Climate") {
+                            return "74A6FC";
+                            } else if (d.key == "Water_use") {
+                            return "0A60F2";
+                            } else if (d.key == "Landscape") {
+                            return "C3F24C";
+                            } else if (d.key == "Fires") {
+                            return "FF5F46";
+                            }
+                        })
+                    .transition()
+                        .duration(500)
+                        .attr("d", area);
+                    
+        /* Creating axes */        
+        
+
+        graphArea.append("g")
+            .attr("class", "x axis")            
+            .attr("fill", "white")
+            .attr("transform", "translate(0," + heightGraph + ")")
+            .call(xAxis);
+        
+        graphArea.append("g")
+            .attr("class", "y axis")
+            .call(yAxis)
+            .append("text")
+                .attr("transform", "rotate(-90)")
+                .attr("y", marginGraph.left-85)
+                .attr("x", -30)
+                .attr("dy", "0.3em")
+                .attr("fill", "black")
+                .text("Average Topic Strength")
+
+        // Legend // 
+
+
+       var legend = d3.select("#chart") 
+                    .selectAll(".legend")
+                    .data(["#0A60F2", "#C3F24C", "#FF5F46", "#74A6FC", "#5C7A0D"])
+                    .enter().append("g")
+                    .attr("class", "legend")
+                    .attr("transform", function(d, i) { return "translate(0," + i * 22 + ")"; });
+
+        legend.append("rect")             
+                    .attr("x", widthGraph + 50)
+                    .attr("y", 48)
+                    .attr("width", 15)
+                    .attr("height", 10)
+                    .attr("fill", function(d) { return String(d); })
+                    .attr("stroke", "black")
+                    .attr("stroke-width", "0.5px");
+
+        legend.append("text")
+                  .data(["Water Use","Landscaping", "Fires and Storms", "Climate Change", "Agriculture"])
+                  .attr("x", widthGraph + 70)
+                  .attr("y", 53)
+                  .attr("dy", ".3em")
+                  .text(function(d) { return d; });
+
+
+        
+        // Explanation box // 
+
+        var box = d3.select("#chart")
+                    .selectAll(".explanation")
+                    .append("rect")
+                        .attr("class", "explanation")
+                        .attr("x", 0)
+                        .attr("y", 0)
+                        .attr("width", 265)
+                        .attr("height", 150)
+                        .style("fill", "none");
+
+        var box_text = d3.select("#chart")
+                            .selectAll(".explanation")
+                            .append("text")
+                            .attr("class", "explanation-text")
+                            .attr("fill", "#DDDDDD")
+                            .attr("x", 50)
+                            .attr("y", 15)
+                            .attr("font-size", "10px")
+                            .text("This dashboard indicates how the conversation around droughts has evolved. The map displays the percentage of counties experiencing drought in a state, as reported to and collected by the National Oceanic and Atmospheric Administration. Darker states represent those with a higher percentage of counties experiencing droughts. Select a source from the drop down list, and move the cursor over the chart to find out how reporting has changed over time with respect to the five major topics. For more information, check out the blog post coming soon!")
+                            .call(wrap, 250, 1.25);;
+
+        // tooltip // 
+
+        tooltip.append("rect")
+              .attr("width", 340)
+              .attr("height", 475)
+              .attr("fill", "#AFD8DD");
+                
+        tooltip.append("text")
+            .attr("class", "tooltip-title")
+            .attr("x", 400/2-130)
+            .attr("y", 35)
+            .text("DROUGHT");
+
+        var fieldNames = tooltip.selectAll(".tooltip-fields")
+            .data(["Source:", "Year:", "Most frequent topic:"])
+            .enter().append("g")
+                .attr("class", "tooltip-titles")
+                .attr("font-weight", "bold")
+                .attr("transform", function(d, i) { return "translate(10," + i * 25 + ")"; });
+
+        fieldNames.append("text")
+            .attr("x", 0)
+            .attr("y", 70)
+            .text(function(d) { return d; });
+
+        var topic = allEvents.filter(function(d) { return parseDate(d.Date).getFullYear() == 1996});
+
+        var fieldSource = tooltip.selectAll(".tooltip-responses")
+            .data([current_source])
+            .enter().append("g")
+                .attr("class", "tooltip-fields")
+                .attr("transform", function(d, i) { return "translate(0,0)"; })
+                .append("text")
+                    .attr("x", 90)
+                    .attr("y", 70)
+                    .text(function (d) { return d; });
+
+        var fieldYear = tooltip.selectAll(".tooltip-responses")
+            .data([1996])
+            .enter().append("g")
+                .attr("class", "tooltip-fields")
+                .attr("transform", function(d, i) { return "translate(0,25)"; })
+                .append("text")
+                    .attr("x", 60)
+                    .attr("y", 70)
+                    .text(function (d) { return d; });
+
+        var fieldTopic = tooltip.selectAll(".tooltip-responses")
+            .data([topic[0].Major_topic])
+            .enter().append("g")
+                .attr("class", "tooltip-fields")
+                .attr("transform", function(d, i) { return "translate(0,50)"; })
+                .append("text")
+                    .attr("x", 190)
+                    .attr("y", 70)
+                    .text(function (d) { return d; });
+
+        tooltip.append("text")
+            .attr("x", 10)
+            .attr("y", 175)
+            .attr("font-size", "18px")
+            .attr("font-weight", "bold")
+            .text("Top headlines:");
+
+        var headlines = tooltip.selectAll(".headline")
+            .data([topic[0].Headline1, topic[0].Headline2])
+            .enter().append("g")
+                .attr("class", "top-headlines")
+                .attr("transform", function(d, i) { return "translate(30," + i * 50 + ")"; });
+
+        headlines.append("text")
+            .attr("x", 0)
+            .attr("y", 200)
+            .text(function (d) { return d; })
+            .call(wrap, 280, 1.1);
+
+        tooltip.append("text")
+                    .attr("x", 10)
+                    .attr("y", 340)
+                    .attr("font-size", "18px")
+                    .attr("font-weight", "bold")
+                    .text("For comparison:")
+    
+
+         // dropdown menu //    
+
+        var newspapers = d3.map(drought_final2, function(d){return d.Source;}).keys() //provides unique values
+
+        d3.select("#select-list")
+                .selectAll("option")
+                    .data(newspapers) 
+                    .enter()
+                    .append("option")
+                    .text(function(d) { return d; });
+
+        d3.select("select")
+            .on("change", function() {
+                current_source = newspapers[this.selectedIndex];
+                updateSource(newspapers[this.selectedIndex]);
+                updateText(null, current_source);
+                resetMap();
+                });                      
+
+        function updateSource(key) {  
+
+            var allEvents = drought_final2.filter(function(d) { return d.Source == key });
+        
+            var keys = d3.keys(allEvents[0]);
+    
+            var keys = keys.filter(function(key) { 
+    			if (key !== "" && key !== "Date" && key !== "Source") {
+    				return key; 
+    			}
+                });
+    
+            stack.keys(keys);
+            
+            xScale.domain(d3.extent(allEvents, function(d) { return parseDate(d.Date); }));
+            yScale.domain([0, d3.max(stack(allEvents)[4], function(d) { return d[1]; })])
+    
+    
+            graphArea.selectAll(".area")
+                        .data(stack(allEvents))
+                        .attr("d", stackedArea0)
+                        .transition()
+                        .attr("d", area);
+                
+                d3.select("#chart")
+                    .attr("fill", "#AFD8DD");
+            
+                d3.selectAll(".legend").selectAll("text").attr("fill", "black");
+
+                d3.select("#chart").select(".x.axis")
+                    .transition()
+                    .duration(750)
+                    .call(xAxis);
+    
+                d3.select("#chart").select(".y.axis")
+                    .transition()
+                    .duration(750)
+                    .call(yAxis);
+  
+        };
+        
+        //Append rect for tracking cursor // 
+
+        graphArea.append("rect")
+              .attr("class", "overlay")
+              .attr("width", widthGraph)
+              .attr("height", heightGraph)
+              .on("mouseover", mouseover )
+              .on("mousemove", mousemove );
+
+
+        var focus = graphArea.append("g")
+            .attr("class", "focus");
+
+        focus.append("line")
+            .attr("y1", 0)
+            .attr("y2", heightGraph);
+
+        function mouseover() {
+            focus.style("display", null);   
+        };
+
+
+        function mousemove() {
+
+            var x0 = xScale.invert(d3.mouse(this)[0]),
+                i = bisectDate(allEvents, x0, 1),
+                d0 = allEvents[i - 1],
+                d1 = allEvents[i],
+                d = x0 - parseDate(d0.Date) > parseDate(d1.Date) - x0 ? d1 : d0;
+
+            focus.attr("transform", "translate(" + xScale(parseDate(d.Date)) + "," + 0 + ")");
+
+            var date = new Date(parseDate(d.Date));
+            current_year = date.getFullYear();
+            updateMap(current_year, current_source);
+            updateText(current_year, current_source);
+        };
+
+        function updateText(year, source) {
+
+            tooltip.selectAll(".tooltip-fields").remove()
+            tooltip.selectAll(".top-headlines").remove()
+            tooltip.selectAll(".comparison-nation").remove()
+            tooltip.selectAll(".comparison-region").remove()
+
+            var allEvents = drought_final2.filter(function(d) { return d.Source == source});
+    
+            var topic = allEvents.filter(function(d) { return parseDate(d.Date).getFullYear() == year});
+
+            var comp = topic.filter(function(d) { return d.Source != "All Newspapers" });
+    
+            var fieldSource = tooltip.selectAll(".tooltip-responses")
+            .data([current_source])
+            .enter().append("g")
+                .attr("class", "tooltip-fields")
+                .attr("transform", function(d, i) { return "translate(0,0)"; })
+                .append("text")
+                    .attr("x", 90)
+                    .attr("y", 70)
+                    .text(function (d) { return d; });
+
+            var fieldYear = tooltip.selectAll(".tooltip-responses")
+                .data([year])
+                .enter().append("g")
+                    .attr("class", "tooltip-fields")
+                    .attr("transform", function(d, i) { return "translate(0,25)"; })
+                    .append("text")
+                        .attr("x", 60)
+                        .attr("y", 70)
+                        .text(function (d) { return d; });
+    
+            var fieldTopic = tooltip.selectAll(".tooltip-responses")
+                .data([topic[0].Major_topic])
+                .enter().append("g")
+                    .attr("class", "tooltip-fields")
+                    .attr("transform", function(d, i) { return "translate(0,50)"; })
+                    .append("text")
+                        .attr("x", 190)
+                        .attr("y", 70)
+                        .text(function (d) { return d; });
+
+            var headlines = tooltip.selectAll(".headline")
+            .data([topic[0].Headline1, topic[0].Headline2])
+            .enter().append("g")
+                .attr("class", "top-headlines")
+                .attr("transform", function(d, i) { return "translate(30," + i * 55 + ")"; });
+            
+            headlines.append("text")
+                .attr("x", 0)
+                .attr("y", 200)
+                .text(function (d) { return d; })                
+                .call(wrap, 280, 1.1);   
+
+            tooltip.selectAll(".comparison")
+                .data([comp[0].Nation])
+                .enter().append("g")
+                    .attr("class", "comparison-nation")
+                    .attr("transform", function(d) { return "translate(30,370)"; })
+                        .append("text")
+                        .attr("x", 0)
+                        .attr("y", 0)
+                        .attr("font-size", "16px")
+                        .text(function(d) { return "Nationally, newspapers focused on " + d + "."; })
+                        .call(wrap, 280, 1.1);
+
+            tooltip.selectAll(".comparison")
+                .data([comp[0].Region])
+                .enter().append("g")
+                    .attr("class", "comparison-region")
+                    .attr("transform", function(d) { return "translate(30,420)"; })
+                        .append("text")
+                        .attr("x", 0)
+                        .attr("y", 0)
+                        .attr("font-size", "16px")
+                        .text(function(d) { return "Regionally, they focused on " + d + "."; })
+                        .call(wrap, 280, 1.1);
+                
+        };
+    };
+
+
+function updateMap(year, current_source) {
+
+    d3.queue()
+        .defer(d3.json, "{{url_for('static',filename="us.json")}}")
+        .defer(d3.csv, "{{url_for('static',filename="noaa_final.csv")}}", function(d) { 
+                if (d.RELATED_EVENT == "Drought" && parseDate(d.DATE).getFullYear() == Number(year)) {
+                    noaa.set(+d.id, +d.NUM_EVENTS);
+                    }; 
+                })
+        .await(ready);
+
+    function ready(error, us) {    
+        svg.append("path")
+            .datum(topojson.feature(us, us.objects.land))
+            .attr("class", "land")
+            .attr("d", path);
+
+        svg.append("g")
+            .attr("class", "states")
+            .selectAll("path")
+            .data(topojson.feature(us, us.objects.states).features)
+            .enter().append("path")  
+                .sort(function (a, b) { 
+                    if (source_outline.get(+a.id*1000) == current_source) {
+                        return 1;
+                    } else {
+                       return -1;
+                }})              
+                .attr("stroke", function(d) { 
+                    if (source_outline.get(d.id*1000) == current_source) {
+                        return "#000"; 
+                    } else {
+                        return "#fff";
+                    }})
+                .attr("stroke-width", function(d) { 
+                    if (source_outline.get(d.id*1000) == current_source) {
+                        return "2px"; 
+                    }})
+                .attr("fill",  function(d) { return color(noaa.get(d.id*1000)); })
+                .attr("d", path);
+        };
+};
+
+function resetMap() {
+
+    d3.queue()
+        .defer(d3.json, "{{url_for('static',filename="us.json")}}")
+        .defer(d3.csv, "{{url_for('static',filename="noaa_final.csv")}}", function(d) { 
+                if (d.RELATED_EVENT == "Drought" && parseDate(d.DATE).getFullYear() == Number(year)) {
+                    noaa.set(+d.id, +d.NUM_EVENTS);
+                    }; 
+                })
+        .await(ready);
+
+    function ready(error, us) {    
+        svg.append("path")
+            .datum(topojson.feature(us, us.objects.land))
+            .attr("class", "land")
+            .attr("d", path);
+
+        svg.append("g")
+            .attr("class", "states")
+            .selectAll("path")
+            .data(topojson.feature(us, us.objects.states).features)
+            .enter().append("path")           
+                .attr("stroke", "#fff")
+                .attr("fill",  function(d) { return color(noaa.get(d.id*1000)); })
+                .attr("d", path);
+        };
+};
+
+
+
+function wrap(text, width, lHeight) {
+  text.each(function() {
+    var text = d3.select(this),
+        words = text.text().split(/\s+/).reverse(),
+        word,
+        line = [],
+        lineNumber = 0,
+        lineHeight = lHeight, // ems
+        y = text.attr("y"),
+        dy = 0,
+        tspan = text.text(null).append("tspan").attr("x", 10).attr("y", y).attr("dy", dy + "em");
+
+    while (word = words.pop()) {
+      line.push(word);
+      tspan.text(line.join(" "));
+      if (tspan.node().getComputedTextLength() > width) {
+        line.pop();
+        tspan.text(line.join(" "));
+        line = [word];
+        tspan = text.append("tspan").attr("x", 10).attr("y", y).attr("dy", ++lineNumber * lineHeight + dy + "em").text(word);
+      }
+    }
+  });
+}
+
+
+//OLD CODE//
+// .on("mouseout", mouseout ) // 
+
+// function mouseout() {focus.style("display", "none"); }; //
+
+    </script>
+
+</body>
+
+
+
